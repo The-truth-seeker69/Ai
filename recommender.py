@@ -1,6 +1,8 @@
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
+from sklearn.metrics.pairwise import cosine_similarity
+
 import numpy as np
 import streamlit as st
 import ast
@@ -30,8 +32,24 @@ tfidf = TfidfVectorizer(stop_words="english")
 tfidf_matrix = tfidf.fit_transform(movies["genres"])
 
 def get_cbf_score(liked_movie_id, candidate_ids):
-    cosine_sim = (tfidf_matrix * tfidf_matrix[liked_movie_id].T).toarray().ravel()
-    return pd.Series(cosine_sim[candidate_ids], index=candidate_ids)
+    # Map movieId to row index in movies DataFrame
+    id_to_index = pd.Series(movies.index, index=movies["movieId"])
+    
+    if liked_movie_id not in id_to_index:
+        return pd.Series(0, index=candidate_ids)
+
+    liked_idx = id_to_index[liked_movie_id]
+    liked_vec = tfidf_matrix[liked_idx]   # vector for liked movie
+
+    # Compute cosine similarity between liked movie and all others
+    sims = cosine_similarity(liked_vec, tfidf_matrix).flatten()
+
+    # Put similarities into a Series with movieId as index
+    sims_series = pd.Series(sims, index=movies["movieId"])
+
+    # Keep only candidate movies
+    return sims_series.loc[candidate_ids]
+
 
 # -----------------------------
 # Collaborative Filtering (CF) with TruncatedSVD
