@@ -1,8 +1,7 @@
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
-from surprise import Dataset, Reader, SVD , accuracy
-from surprise.model_selection import train_test_split
+
 import seaborn as sns
 import matplotlib.pyplot as plt
 from collections import defaultdict
