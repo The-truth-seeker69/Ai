@@ -61,9 +61,16 @@ pred_matrix = np.dot(latent_matrix, svd.components_)
 pred_df = pd.DataFrame(pred_matrix, index=user_item_matrix.index, columns=user_item_matrix.columns)
 
 def get_cf_score(user_id, candidate_ids):
-    if user_id not in pred_df.index:
-        return pd.Series(0, index=candidate_ids)
-    return pred_df.loc[user_id, candidate_ids]
+    # keep only candidate IDs present in pred_df
+    valid_ids = [mid for mid in candidate_ids if mid in pred_df.columns]
+
+    if user_id not in pred_df.index or not valid_ids:
+        return pd.Series(0, index=candidate_ids)  # fallback (zeros)
+
+    scores = pred_df.loc[user_id, valid_ids]
+
+    # Reindex to full candidate list (so missing movies get 0 score)
+    return scores.reindex(candidate_ids, fill_value=0)
 
 # -----------------------------
 # Hybrid Recommender
