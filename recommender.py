@@ -1,7 +1,7 @@
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import linear_kernel
-
+from sklearn.decomposition import TruncatedSVD
+from sklearn.metrics.pairwise import cosine_similarity
 import seaborn as sns
 import matplotlib.pyplot as plt
 from collections import defaultdict
@@ -33,15 +33,23 @@ movies['movieId'] = movies['movieId'].astype(int)
 movies['genres'] = movies['genres'].fillna('')  # avoid NaN
 tfidf = TfidfVectorizer(stop_words="english")
 tfidf_matrix = tfidf.fit_transform(movies["genres"])
+# Create user–item matrix
 
-def get_cbf_score(liked_movie_id, candidate_ids):
-    try:
-        idx = movies[movies["movieId"] == liked_movie_id].index[0]
-    except IndexError:
-        return pd.Series(0, index=candidate_ids)  # movie not found
-    cosine_sim = linear_kernel(tfidf_matrix[idx:idx+1], tfidf_matrix).flatten()
-    scores = pd.Series(cosine_sim, index=movies["movieId"])
-    return scores.loc[candidate_ids]
+user_item_matrix = ratings.pivot(index="userId", columns="movieId", values="rating").fillna(0)
+
+svd = TruncatedSVD(n_components=20, random_state=42)
+latent_matrix = svd.fit_transform(user_item_matrix)
+
+
+# Reconstruct approximate predictions
+
+pred_matrix = np.dot(latent_matrix, svd.components_)
+pred_df = pd.DataFrame(pred_matrix, index=user_item_matrix.index, columns=user_item_matrix.columns)
+def get_cf_score(user_id, candidate_ids):
+    if user_id not in pred_df.index:
+        return pd.Series(0, index=candidate_ids)  # fallback
+    scores = pred_df.loc[user_id, candidate_ids]
+    return scores
 
 
 # -----------------------------
