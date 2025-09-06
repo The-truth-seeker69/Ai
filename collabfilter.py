@@ -67,33 +67,6 @@ def collab():
     ratings, movies_filtered = load_and_preprocess_data()
 
     # =========================
-    # Precision & Recall
-    # =========================
-    def precision_recall_at_k(predictions, k=10, threshold=3):
-        user_est_true = defaultdict(list)
-        for uid, _, true_r, est, _ in predictions:
-            user_est_true[uid].append((est, true_r))
-
-        precisions, recalls, f1_scores = defaultdict(float), defaultdict(float), defaultdict(float)
-        for uid, user_ratings in user_est_true.items():
-            user_ratings.sort(key=lambda x: x[0], reverse=True)
-            n_rel = sum((true_r >= threshold) for (_, true_r) in user_ratings)
-            n_rec_k = sum((est >= threshold) for (est, _) in user_ratings[:k])
-            n_rel_and_rec_k = sum(((true_r >= threshold) and (est >= threshold))
-                                for (est, true_r) in user_ratings[:k])
-            
-            precisions[uid] = n_rel_and_rec_k / n_rec_k if n_rec_k != 0 else 0
-            recalls[uid] = n_rel_and_rec_k / n_rel if n_rel != 0 else 0
-            
-            if (precisions[uid] + recalls[uid]) != 0:
-                f1_scores[uid] = 2 * (precisions[uid] * recalls[uid]) / (precisions[uid] + recalls[uid])
-
-        avg_precision = sum(p for p in precisions.values()) / len(precisions)
-        avg_recall = sum(r for r in recalls.values()) / len(recalls)
-        avg_f1 = sum(f for f in f1_scores.values()) / len(f1_scores) if f1_scores else 0
-        return avg_precision, avg_recall, avg_f1
-
-    # =========================
     # Train & Tune Collaborative Filtering Model (SVD++)
     # =========================
     @st.cache_resource
