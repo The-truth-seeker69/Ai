@@ -29,32 +29,35 @@ def hybrid():
     # -----------------------------
     # Load Datasets
     # -----------------------------
-    movies = pd.read_csv("dataset/movies_metadata.csv", low_memory=False)
-    # Keep only first 10000 for memory reasons
+    @st.cache_data
+    def load_movies():
+        # Keep only first 40000 for memory reasons
+        movies = pd.read_csv("dataset/movies_metadata.csv", low_memory=False).head(40000)
+        # Rename 'id' column to 'movieId' and convert to int
+        movies = movies.rename(columns={'id': 'movieId'})
+        # Convert id to int
+        movies['movieId'] = pd.to_numeric(movies['movieId'], errors='coerce')
+        movies = movies.dropna(subset=['movieId'])
+        movies['movieId'] = movies['movieId'].astype(int)
 
-    movies = movies.head(400000)
+        def parse_genres(x):
+            try:
+                genre_list = ast.literal_eval(x) if isinstance(x, str) else []
+                return [g["name"] for g in genre_list if isinstance(g, dict)]
+            except Exception:
+                return []
+        movies["genres_list"] = movies["genres"].apply(parse_genres)
+        return movies
 
-    # Rename 'id' column to 'movieId' and convert to int
-    movies = movies.rename(columns={'id': 'movieId'})
-    # Convert id to int
-
-    movies['movieId'] = pd.to_numeric(movies['movieId'], errors='coerce')
-    movies = movies.dropna(subset=['movieId'])
-
-
-    movies['movieId'] = movies['movieId'].astype(int)
 
     # Fill missing genres
+   
 
-    def parse_genres(x):
-        try:
-            genre_list = ast.literal_eval(x) if isinstance(x, str) else []
-            return [g["name"] for g in genre_list if isinstance(g, dict)]
-        except Exception:
-            return []
-
-    movies["genres_list"] = movies["genres"].apply(parse_genres)
-
+    
+    @st.cache_data
+    def load_ratings():
+        ratings = pd.read_csv("dataset/ratings_small.csv")
+        return ratings
     # -----------------------------
     # Content-Based Filtering (CBF)
     # -----------------------------
@@ -67,19 +70,59 @@ def hybrid():
 
 
 
-    tfidf = TfidfVectorizer(stop_words="english", max_features=5000)
-    movies["genres_str2"] = movies["genres_list"].apply(lambda g: " ".join(g))
+    @st.cache_resource
+    def compute_tfidf_matrix(movies):
+        tfidf = TfidfVectorizer(stop_words="english", max_features=5000)
+        movies["genres_str2"] = movies["genres_list"].apply(lambda g: " ".join(g))
+        movies['features'] = (
+            movies['overview'].fillna('') + " " +
+            movies["genres_str2"].fillna('') + " " +
+            movies['production_companies'].fillna('') + " " +
+            movies['production_countries'].fillna('') + " " +
+            movies['spoken_languages'].fillna('')
+        )
+        tfidf_matrix = tfidf.fit_transform(movies['features'])
+        return tfidf_matrix
+    
 
-    movies['features'] = (
-        movies['overview'].fillna('') + " " +
-        movies["genres_str2"].fillna('') + " " +
-        movies['production_companies'].fillna('')+ " " +
-        movies['production_countries'].fillna('')+ " " +
-        movies['spoken_languages'].fillna('')
-    )
+    @st.cache_resource
+    def train_svd_model(ratings):
+        reader = Reader(rating_scale=(0.5, 5))
+        data = Dataset.load_from_df(ratings[["userId", "movieId", "rating"]], reader)
+        param_grid = {
+            'n_factors': [50, 150],
+            'n_epochs': [20, 30],
+            'lr_all': [0.002, 0.005],
+            'reg_all': [0.02, 0.05]
+        }
+        grid = GridSearchCV(SVD, param_grid, measures=['rmse', 'mae'], cv=3, n_jobs=-1)
+        grid.fit(data)
+        best_params = grid.best_params['rmse']
 
+        trainset, testset = train_test_split(data, test_size=0.20)
+        svd = SVD(**best_params)
+        svd.fit(trainset)
+        predictions = svd.test(testset)
+        return svd, predictions
+    
+    def fetch_movie_poster(imdb_id, api_key="7706a7"):
+            if not imdb_id:
+                return "https://placehold.co/300x450?text=No+Poster"
+            url = f"http://www.omdbapi.com/?i={imdb_id}&apikey={api_key}"
+            response = requests.get(url)
+            data = response.json()
+            if data.get("Response") == "True" and data.get("Poster"):
+                return data.get("Poster")
+            return "https://placehold.co/300x450?text=No+Poster"
+    
+        # -----------------------------
+    # Load datasets and models
+    # -----------------------------
+    movies = load_movies()
+    ratings = load_ratings()
+    tfidf_matrix = compute_tfidf_matrix(movies)
+    svd, predictions = train_svd_model(ratings)
 
-    tfidf_matrix = tfidf.fit_transform(movies['features'])
 
     def get_cbf_score(liked_movie_id, candidate_ids):
         try:
