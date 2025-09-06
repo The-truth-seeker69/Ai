@@ -1,6 +1,6 @@
 import streamlit as st
 from collabfilter import collab
-from movie_recommender import contentbased
+from contentbased import contentbased
 from hybrid import hybrid
 
 # === Main Menu ===
