@@ -1,6 +1,8 @@
 import streamlit as st
 from collabfilter import collab
+from contentbased import contentbased
 from hybrid import hybrid
+
 # === Main Menu ===
 st.title("🎬 Movie Recommender System")
 
@@ -15,7 +17,7 @@ def get_algorithm(choice):
     if choice == "Collaborative Filtering":
         return collab()
     elif choice == "Content-Based Filtering":
-        return SVD(n_factors=50, n_epochs=20, verbose=False)
+        return contentbased()
     elif choice == "Hybrid":
         return hybrid()
     else:
