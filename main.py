@@ -1,6 +1,6 @@
 import streamlit as st
 from collabfilter import collab
-
+from hybrid import hybrid
 # === Main Menu ===
 st.title("🎬 Movie Recommender System")
 
@@ -17,7 +17,7 @@ def get_algorithm(choice):
     elif choice == "Content-Based Filtering":
         return SVD(n_factors=50, n_epochs=20, verbose=False)
     elif choice == "Hybrid":
-        return KNNBasic(sim_options={'name': 'cosine', 'user_based': True})
+        return hybrid()
     else:
         return collab()  # default fallback
 
@@ -28,4 +28,3 @@ st.write("---")
 # Train model with the selected algorithm
 algo = get_algorithm(algorithm_choice)
 
-# (Here you’d plug it into your train/test split pipeline and display recommendations)
