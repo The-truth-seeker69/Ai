@@ -6,7 +6,7 @@ st.title("🎬 Movie Recommender System")
 
 algorithm_choice = st.radio(
     "Select which recommendation algorithm you want to run:",
-    ["SVD++ (Collaborative Filtering)", "SVD (Matrix Factorization)", "KNN (User-Based)"],
+    ["Collaborative Filtering", "Content-Based Filtering", "Hybrid"],
     horizontal=True
 )
 
@@ -14,9 +14,9 @@ algorithm_choice = st.radio(
 def get_algorithm(choice):
     if choice == "Collaborative Filtering":
         return collab()
-    elif choice == "SVD (Matrix Factorization)":
+    elif choice == "Content-Based Filtering":
         return SVD(n_factors=50, n_epochs=20, verbose=False)
-    elif choice == "KNN (User-Based)":
+    elif choice == "Hybrid":
         return KNNBasic(sim_options={'name': 'cosine', 'user_based': True})
     else:
         return collab()  # default fallback
