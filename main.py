@@ -1,5 +1,6 @@
 import streamlit as st
 from collabfilter import collab
+from movie_recommender import contentbased
 
 # === Main Menu ===
 st.title("🎬 Movie Recommender System")
@@ -15,7 +16,7 @@ def get_algorithm(choice):
     if choice == "Collaborative Filtering":
         return collab()
     elif choice == "Content-Based Filtering":
-        return SVD(n_factors=50, n_epochs=20, verbose=False)
+        return contentbased()
     elif choice == "Hybrid":
         return KNNBasic(sim_options={'name': 'cosine', 'user_based': True})
     else:
