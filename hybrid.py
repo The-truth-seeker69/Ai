@@ -7,6 +7,8 @@ def hybrid():
     from collections import defaultdict
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics.pairwise import linear_kernel
+    import joblib
+
     # ast convert [{'id': 28, 'name': 'Action'}]" to python lists
 
     from surprise import Dataset, Reader, SVD, accuracy
@@ -32,7 +34,7 @@ def hybrid():
     @st.cache_data
     def load_movies():
         # Keep only first 40000 for memory reasons
-        movies = pd.read_csv("dataset/movies_metadata.csv", low_memory=False).head(40000)
+        movies = pd.read_csv("dataset/movies_metadata.csv", low_memory=False).head(10000)
         # Rename 'id' column to 'movieId' and convert to int
         movies = movies.rename(columns={'id': 'movieId'})
         # Convert id to int
@@ -69,10 +71,9 @@ def hybrid():
     # candidates actually means the candidate movies that user might like cause it finds similiarity on other candidates such as genres
 
 
-
     @st.cache_resource
     def compute_tfidf_matrix(movies):
-        tfidf = TfidfVectorizer(stop_words="english", max_features=5000)
+        tfidf = TfidfVectorizer(stop_words="english", max_features=3000)
         movies["genres_str2"] = movies["genres_list"].apply(lambda g: " ".join(g))
         movies['features'] = (
             movies['overview'].fillna('') + " " +
@@ -90,7 +91,7 @@ def hybrid():
         reader = Reader(rating_scale=(0.5, 5))
         data = Dataset.load_from_df(ratings[["userId", "movieId", "rating"]], reader)
         param_grid = {
-            'n_factors': [50, 150],
+            'n_factors': [50, 100],
             'n_epochs': [20, 30],
             'lr_all': [0.002, 0.005],
             'reg_all': [0.02, 0.05]
@@ -134,14 +135,14 @@ def hybrid():
         scores = pd.Series(cosine_sim, index=movies["movieId"])
         return scores.loc[candidate_ids]
 
+    
     # -----------------------------
     # Collaborative Filtering (CF)
     # -----------------------------
 
 
 
-    # Load ratings dataset
-    ratings = pd.read_csv("dataset/ratings_small.csv")  # userId, movieId, rating
+  
     # tell that the rating is 0 -5
 
     reader = Reader(rating_scale=(0.5, 5))
@@ -190,7 +191,7 @@ def hybrid():
     # -----------------------------'
     # if alpha 0.6 meaning that 60% cbf and 40% cf
 
-    def hybrid_recommend(user_id, liked_title, movies ,top_n=10, alpha=0.6):
+    def hybrid_recommend(user_id, liked_title, movies ,top_n=10, alpha=0.5):
 
         try:
             # get liked_movie_id from the title , from the input defined in front
@@ -216,8 +217,10 @@ def hybrid():
         # if user id is not the rating fall back to content based only
         if int(user_id) not in ratings['userId'].unique():
         # Cold-start → no CF info
+            st.info("👤 since you don’t have past ratings, we’re recommending movies similar to your chosen title, boosted by popularity and recency.")
             cf = pd.Series(0, index=candidate_ids)
         else:
+            st.success("✅  Your recommendations are personalized using both your viewing history and movie similarity.")
             cf = get_cf_score(int(user_id), candidate_ids)
             
         # Ensures scores are between 0–1 so they’re comparable.
@@ -265,7 +268,7 @@ def hybrid():
 
 
 
-    def evaluate_recommendation_quality(predictions, top_n=30, threshold=3.0):
+    def evaluate_recommendation_quality(predictions, top_n=50, threshold=3.0):
         """Evaluate recommendation quality using multiple metrics"""
         
         # 1. Traditional accuracy metrics
@@ -374,6 +377,7 @@ def hybrid():
                 st.markdown(f"### {row['title']} ({row['release_date'][:4] if pd.notna(row['release_date']) else 'N/A'})")
                 st.markdown(f"**Genres:** {genre_str}")
                 st.write(f"**Runtime:** {row['runtime']:.0f} mins")
+                
                 st.write(f"**Rating:** ⭐ {row['vote_average']:.0f}/10 (based on {row['vote_count']:.0f} votes)")
                 poster_url = fetch_movie_poster(row.get("imdb_id"))
                 if poster_url:
