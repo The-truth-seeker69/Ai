@@ -2,14 +2,13 @@ def hybrid():
     import pandas as pd
     import numpy as np
     import ast
+        # ast convert [{'id': 28, 'name': 'Action'}]" to python lists
+
     import requests
     import streamlit as st
     from collections import defaultdict
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics.pairwise import linear_kernel
-    import joblib
-
-    # ast convert [{'id': 28, 'name': 'Action'}]" to python lists
 
     from surprise import Dataset, Reader, SVD, accuracy
     from surprise.model_selection import train_test_split, GridSearchCV
