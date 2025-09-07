@@ -216,7 +216,7 @@ def hybrid():
         # if user id is not the rating fall back to content based only
         if int(user_id) not in ratings['userId'].unique():
         # Cold-start → no CF info
-            st.info("👤 since you don’t have past ratings, we’re recommending movies similar to your chosen title, boosted by popularity and recency.")
+            st.info("👤 Since you don’t have past ratings, we’re recommending movies similar to your chosen title, boosted by popularity and recency.")
             cf = pd.Series(0, index=candidate_ids)
         else:
             st.success("✅  Your recommendations are personalized using both your viewing history and movie similarity.")
