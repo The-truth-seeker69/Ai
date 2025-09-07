@@ -26,7 +26,7 @@ def contentbased():
         # Clean links_small
         links_small = links_small[links_small['tmdbId'].notnull()]
         links_small['tmdbId'] = links_small['tmdbId'].astype(int)
-        links_small['imdbId'] = links_small['imdbId'].astype(str).str.zfill(7)  # ensure 7 digits
+        links_small['imdbId'] = links_small['imdbId'].astype(str).str.zfill(7)
 
         md = md.drop([19730, 29503, 35587])  # drop bad rows
 
@@ -36,7 +36,7 @@ def contentbased():
         )
 
         # Merge credits and keywords
-        md['id'] = md['id'].astype('int')
+        md['id'] = md['id'].astype(int)
         credits['id'] = credits['id'].astype(int)
         keywords['id'] = keywords['id'].astype(int)
         md = md.merge(credits, on='id')
@@ -50,16 +50,12 @@ def contentbased():
         smd['description'] = smd['overview'] + ' ' + smd['tagline']
         smd['description'] = smd['description'].fillna('')
 
-        # ===============================
         # TF-IDF on description
-        # ===============================
         tf = TfidfVectorizer(analyzer='word', ngram_range=(1, 2), min_df=1, stop_words='english')
         tfidf_matrix = tf.fit_transform(smd['description'])
         cosine_sim_desc = linear_kernel(tfidf_matrix, tfidf_matrix)
 
-        # ===============================
         # Process cast, crew, keywords
-        # ===============================
         smd['cast'] = smd['cast'].apply(literal_eval)
         smd['crew'] = smd['crew'].apply(literal_eval)
         smd['keywords'] = smd['keywords'].apply(literal_eval)
@@ -70,34 +66,30 @@ def contentbased():
                     return i['name']
             return np.nan
 
-        # Keep display versions
         smd['director_display'] = smd['crew'].apply(get_director)
         smd['cast_display'] = smd['cast'].apply(lambda x: [i['name'] for i in x] if isinstance(x, list) else [])
         smd['cast_display'] = smd['cast_display'].apply(lambda x: x[:3] if len(x) >= 3 else x)
 
-        # Algorithm versions
         smd['cast'] = smd['cast_display'].apply(lambda x: [str.lower(i.replace(" ", "")) for i in x])
-        smd['director'] = smd['director_display'].astype('str').apply(lambda x: str.lower(x.replace(" ", "")))
-        smd['director'] = smd['director'].apply(lambda x: [x, x])  # boost importance
+        smd['director'] = smd['director_display'].astype(str).apply(lambda x: str.lower(x.replace(" ", "")))
+        smd['director'] = smd['director'].apply(lambda x: [x])  # boost importance
 
         smd['keywords'] = smd['keywords'].apply(lambda x: [i['name'] for i in x] if isinstance(x, list) else [])
 
-        s = smd.apply(lambda x: pd.Series(x['keywords']), axis=1).stack().reset_index(level=1, drop=True)
-        s.name = 'keyword'
-        s = s.value_counts()
-        s = s[s > 1]
+        # s = smd.apply(lambda x: pd.Series(x['keywords']), axis=1).stack().reset_index(level=1, drop=True)
+        # s.name = 'keyword'
+        # s = s.value_counts()
+        # s = s[s > 1]
 
-        stemmer = SnowballStemmer('english')
+        # stemmer = SnowballStemmer('english')
 
-        def filter_keywords(x):
-            return [stemmer.stem(i) for i in x if i in s]
+        # def filter_keywords(x):
+        #     return [stemmer.stem(i) for i in x if i in s]
 
-        smd['keywords'] = smd['keywords'].apply(filter_keywords)
+        # smd['keywords'] = smd['keywords'].apply(filter_keywords)
         smd['keywords'] = smd['keywords'].apply(lambda x: [str.lower(i.replace(" ", "")) for i in x])
 
-        # ===============================
         # Build the "soup"
-        # ===============================
         smd['soup_keywords'] = smd['keywords'].apply(lambda x: ' '.join(x))
         smd['soup_castdir'] = smd['cast'].apply(lambda x: ' '.join(x)) + ' ' + smd['director'].apply(lambda x: ' '.join(x))
         smd['soup_genres'] = smd['genres'].apply(lambda x: ' '.join([g.lower().replace(" ", "") for g in x]))
@@ -107,25 +99,56 @@ def contentbased():
         count_gn = CountVectorizer(stop_words='english')
 
         cosine_sim_keywords = cosine_similarity(count_kw.fit_transform(smd['soup_keywords']))
-        cosine_sim_castdir  = cosine_similarity(count_cd.fit_transform(smd['soup_castdir']))
-        cosine_sim_genres   = cosine_similarity(count_gn.fit_transform(smd['soup_genres']))
+        cosine_sim_castdir = cosine_similarity(count_cd.fit_transform(smd['soup_castdir']))
+        cosine_sim_genres = cosine_similarity(count_gn.fit_transform(smd['soup_genres']))
 
+        # --------------------------
+        # Recency & Popularity Scores
+        # --------------------------
+        current_year = 2025
+        smd['release_year'] = pd.to_datetime(smd['release_date'], errors='coerce').dt.year.fillna(0).astype(int)
+        smd['recency_score'] = 1 / (1 + (current_year - smd['release_year']))
+        smd['popularity_score'] = smd['vote_average'] * np.log1p(smd['vote_count'])
+
+        # normalize
+        smd['recency_score_norm'] = (smd['recency_score'] - smd['recency_score'].min()) / (smd['recency_score'].max() - smd['recency_score'].min())
+        smd['popularity_score_norm'] = (smd['popularity_score'] - smd['popularity_score'].min()) / (smd['popularity_score'].max() - smd['popularity_score'].min())
+
+        # Weighted rating (IMDb-style)
+        smd['vote_count'] = smd['vote_count'].fillna(0).astype(int)
+        smd['vote_average'] = smd['vote_average'].fillna(0).astype(float)
+        m = smd['vote_count'].quantile(0.6)
+        C = smd['vote_average'].mean()
+        smd['wr'] = smd.apply(lambda x: (x['vote_count']/(x['vote_count']+m) * x['vote_average']) + (m/(x['vote_count']+m)*C), axis=1)
+        smd['wr_norm'] = (smd['wr'] - smd['wr'].min()) / (smd['wr'].max() - smd['wr'].min())
+
+        # --------------------------
+        # Optimized similarity weights
+        # --------------------------
         cosine_sim_hybrid = (
-            (0.5 * cosine_sim_keywords) +
-            (0.2 * cosine_sim_castdir) +
-            (0.1 * cosine_sim_genres) +
-            (0.2 * cosine_sim_desc)
+            0.20 * cosine_sim_keywords +
+            0.20 * cosine_sim_castdir +
+            0.20 * cosine_sim_genres +
+            0.40 * cosine_sim_desc
+        )
+
+        # Combine similarity + weighted rating + recency + popularity
+        final_score = (
+            0.50 * cosine_sim_hybrid +
+            0.20 * smd['wr_norm'].values[:, None] +
+            0.20 * smd['recency_score_norm'].values[:, None] +
+            0.10 * smd['popularity_score_norm'].values[:, None]
         )
 
         smd = smd.reset_index(drop=True)
         indices = pd.Series(smd.index, index=smd['title'])
 
-        return smd, cosine_sim_hybrid, indices
+        return smd, final_score, indices
 
     # ===============================
     # Recommendation function
     # ===============================
-    def get_recommendations(title, smd, cosine_sim_hybrid, indices):
+    def get_recommendations(title, smd, cosine_sim_hybrid, indices, top_n=10):
         if title not in indices:
             matches = indices.index[indices.index.str.lower() == title.lower()]
             if len(matches) == 0:
@@ -136,7 +159,7 @@ def contentbased():
         sim_scores = list(enumerate(cosine_sim_hybrid[idx]))
         sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
         # sim_scores = sim_scores[1:26]  # exclude the movie itself
-        sim_scores = sim_scores[1:]
+        sim_scores = sim_scores[1:top_n+1]
 
         movie_indices = [i[0] for i in sim_scores]
         scores = [i[1] for i in sim_scores]
@@ -198,7 +221,8 @@ def contentbased():
             "director_display": smd['director_display'].iloc[movie_indices],
             "imdb_id": smd['imdbId'].iloc[movie_indices],
             "poster_path": smd['poster_path'].iloc[movie_indices],
-            "score": [f"{s:.4f}" for s in scores]
+            "score": [f"{s:.4f}" for s in scores],
+            "weighted_rating": smd['wr'].iloc[movie_indices].apply(lambda x: f"{x:.2f}")
         })
 
     # ===============================
@@ -206,42 +230,59 @@ def contentbased():
     # ===============================
     def evaluate_recommendations(title, recs, smd, indices):
         idx = indices[title]
-        
-        # Reference movie fields
+
+        # Reference movie features
         true_genres = set(smd.loc[idx, 'genres'])
         true_director = smd.loc[idx, 'director_display']
         true_cast = set(smd.loc[idx, 'cast_display'])
         true_keywords = set(smd.loc[idx, 'keywords'])
 
-        y_true = []
-        y_pred = []
+        # Compute similarity scores for all movies
+        sim_scores = list(enumerate(cosine_sim_hybrid[idx]))
+        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
 
-        for _, row in recs.iterrows():
+        # Exclude the input movie itself
+        sim_scores = [s for s in sim_scores if s[0] != idx]
+
+        y_true_all = []   # for recall@all
+        y_pred_all = []   # for recall@all
+        y_true_top10 = [] # for precision@10
+        y_pred_top10 = [] # for precision@10
+
+        for rank, (movie_idx, sim_score) in enumerate(sim_scores):
+            row = smd.iloc[movie_idx]
+
             rec_genres = set(row['genres'])
             rec_director = row['director_display']
             rec_cast = set(row['cast_display']) if isinstance(row['cast_display'], list) else set()
             rec_keywords = set(row['keywords'])
 
-            # Relevance heuristic: any matching field counts
-            relevance = int(
-                len(true_genres & rec_genres) > 0 or
-                true_director == rec_director or
-                len(true_cast & rec_cast) > 0 or
-                len(true_keywords & rec_keywords) > 0
-            )
+            # Weighted relevance: count 2+ features overlap
+            overlap_count = 0
+            if len(true_keywords & rec_keywords) > 1:
+                overlap_count += 1
+            if rec_director == true_director or len(true_cast & rec_cast) > 0:
+                overlap_count += 1
+            if len(true_genres & rec_genres) > 1:
+                overlap_count += 1
 
-            y_true.append(relevance)             # actual relevance
-            y_pred.append(float(row['score']))   # predicted similarity score
+            is_relevant = int(overlap_count >= 2)
 
-        # Binarize predicted scores for precision calculation
-        y_pred_binary = [1 if score >= 0.1 else 0 for score in y_pred]
+            # For recall@all
+            y_true_all.append(is_relevant)
+            y_pred_all.append(int(rank < 10))  # only top 10 are recommended
+
+            # For precision@10
+            if rank < 10:
+                y_true_top10.append(is_relevant)
+                y_pred_top10.append(1)  # all in top 10 are recommended
 
         # Metrics
-        precision = precision_score(y_true, y_pred_binary)
-        recall = recall_score(y_true, y_pred_binary)
-        f1 = f1_score(y_true, y_pred_binary)
+        precision_top10 = precision_score(y_true_top10, y_pred_top10, zero_division=0)
+        recall_all = recall_score(y_true_all, y_pred_all, zero_division=0)
+        f1_score_all = (2 * precision_top10 * recall_all) / (precision_top10 + recall_all + 1e-8)
 
-        return precision, recall, f1
+        return precision_top10, recall_all, f1_score_all
 
     # ===============================
     # OMDb poster fetcher
@@ -326,16 +367,17 @@ def contentbased():
                     st.write(f"**Director:** {director_display}")
                     st.write(f"**Cast:** {cast_display}")
                     st.write(f"**Score:** {row['score']}")
-                    # st.write(f"**Weighted Rating:** {row['weighted_rating']}")
+                    st.write(f"**Weighted Rating:** {row['weighted_rating']}/10")
                     # st.write(f"**Final Score:** {row['final_score']}")
                     st.caption(plot_display)
                 st.markdown("---")
 
             # Evaluate recommendations
-            # precision, recall, f1 = evaluate_recommendations(movie_name, results, smd, indices)
-            # st.write(f"**Evaluation Metrics:**")
-            # st.write(f"- Precision: {precision:.4f}")
-            # st.write(f"- Recall: {recall:.4f}")
-            # st.write(f"- F1 Score: {f1:.4f}")
+            precision, recall, f1 = evaluate_recommendations(movie_name, results, smd, indices)
+            st.write(f"**Evaluation Metrics:**")
+            st.write(f"- Precision@10: {precision:.4f}")
+            st.write(f"- Recall@all: {recall:.4f}")
+            st.write(f"- F1 Score (precision@10, recall@all): {f1:.4f}")
+            #i can't do precision@all, im doing for top 10, i can't do recall@10, false negative is 0?
         except KeyError:
             st.error("❌ Movie not found in database. Please try another.")
