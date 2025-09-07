@@ -136,7 +136,7 @@ def collab():
 
         # Evaluation metrics
         rmse_score = accuracy.rmse(predictions, verbose=False)
-        mae_score = accuracy.mae(predictions, verbose=False)
+        mse_score = accuracy.mse(predictions, verbose=False)
 
         # Precision/Recall@K
         def precision_recall_at_k(predictions, k=10, threshold=3):
@@ -163,10 +163,10 @@ def collab():
 
         precision, recall, f1_score = precision_recall_at_k(predictions)
 
-        return final_algo, predictions, best_params, rmse_score, mae_score, precision, recall, f1_score
+        return final_algo, predictions, best_params, rmse_score, mse_score, precision, recall, f1_score
 
     # Train the model and get predictions
-    algo, predictions, best_params, rmse_score, mae_score, precision, recall, f1_score = train_model(ratings)
+    algo, predictions, best_params, rmse_score, mse_score, precision, recall, f1_score = train_model(ratings)
 
     user_id = st.number_input("Login with User ID:", min_value=1, max_value=ratings['userId'].max(), value=1)
 
@@ -263,7 +263,7 @@ def collab():
     if show_metrics:
         st.subheader("📊 Final Model Evaluation")
         st.write(f"RMSE: {rmse_score:.4f}")
-        st.write(f"MAE: {mae_score:.4f}")
+        st.write(f"MSE: {mse_score:.4f}")
         st.write(f"Precision@10: {precision:.4f}")
         st.write(f"Recall@10: {recall:.4f}")
         st.write(f"F1 Score@10: {f1_score:.4f}")
