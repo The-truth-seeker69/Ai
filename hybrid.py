@@ -356,8 +356,10 @@ def hybrid():
             poster_url = data.get("Poster")
         poster_cache[imdb_id] = poster_url
         return poster_url
-
-    if fav_movie:
+    if not user_id.strip():
+        st.warning("⚠️ Please enter a valid User ID before generating recommendations.")
+    else :
+     if fav_movie:
         results = hybrid_recommend(user_id=user_id, liked_title=fav_movie,movies=movies,top_n=10, alpha=0.6)
         if results.empty:
             st.warning(f"Sorry, no match found for '{fav_movie}'. Try another movie.")
