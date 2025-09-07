@@ -229,7 +229,13 @@ def contentbased():
     # Evaluation function
     # ===============================
     def evaluate_recommendations(title, recs, smd, indices):
-        idx = indices[title]
+        # Case-insensitive search for the movie
+        matches = indices.index[indices.index.str.lower() == title.lower()]
+        if len(matches) == 0:
+            raise KeyError(f"Movie '{title}' not found in database.")
+        title_correct = matches[0]  # actual title as in indices
+
+        idx = indices[title_correct]
 
         # Reference movie features
         true_genres = set(smd.loc[idx, 'genres'])
@@ -259,11 +265,11 @@ def contentbased():
 
             # Weighted relevance: count 2+ features overlap
             overlap_count = 0
-            if len(true_keywords & rec_keywords) > 1:
+            if len(true_keywords & rec_keywords) > 0:
                 overlap_count += 1
             if rec_director == true_director or len(true_cast & rec_cast) > 0:
                 overlap_count += 1
-            if len(true_genres & rec_genres) > 1:
+            if len(true_genres & rec_genres) > 0:
                 overlap_count += 1
 
             is_relevant = int(overlap_count >= 2)
@@ -318,17 +324,22 @@ def contentbased():
     movie_name = st.text_input("Movie title:")
 
     if movie_name:
-        try:
-            # Get the input movie itself as a "recommendation"
-            input_idx = indices[movie_name] if movie_name in indices else indices[indices.index.str.lower() == movie_name.lower()][0]
+        # Case-insensitive search for the movie
+        matches = indices.index[indices.index.str.lower() == movie_name.lower()]
+        
+        if len(matches) == 0:
+            st.error("❌ Movie not found in database. Please try another.")
+        else:
+            input_idx = indices[matches[0]]
             input_movie = smd.iloc[[input_idx]]
-            input_poster = fetch_movie_poster(input_movie['imdbId'].values[0]) if pd.notna(input_movie['imdbId'].values[0]) else "https://placehold.co/300x450?text=No+Poster"
+            input_poster = fetch_movie_poster(
+                input_movie['imdbId'].values[0]
+            ) if pd.notna(input_movie['imdbId'].values[0]) else "https://placehold.co/300x450?text=No+Poster"
             
             # Display the input movie first
             year_display = ""
             if 'release_date' in smd.columns and pd.notna(input_movie['release_date'].values[0]):
                 year_display = input_movie['release_date'].values[0][:4]
-
             title_display_input = f"{input_movie['title'].values[0]} ({year_display})" if year_display else input_movie['title'].values[0]
 
             st.subheader(f"Input Movie: {title_display_input}")
@@ -342,11 +353,11 @@ def contentbased():
                 st.caption(input_movie['description'].values[0])
             st.markdown("---")
 
-            # Now get top 10 recommendations
+            # Get top 10 recommendations
             results = get_recommendations(movie_name, smd, cosine_sim_hybrid, indices).head(10)
             st.success(f"Top 10 recommendations for **{movie_name}**:")
 
-            # Display recommendations as before
+            # Display recommendations
             for _, row in results.iterrows():
                 poster_url = fetch_movie_poster(row['imdb_id']) if pd.notna(row['imdb_id']) else "https://placehold.co/300x450?text=No+Poster"
                 year_display = ""
@@ -368,7 +379,6 @@ def contentbased():
                     st.write(f"**Cast:** {cast_display}")
                     st.write(f"**Score:** {row['score']}")
                     st.write(f"**Weighted Rating:** {row['weighted_rating']}/10")
-                    # st.write(f"**Final Score:** {row['final_score']}")
                     st.caption(plot_display)
                 st.markdown("---")
 
@@ -379,5 +389,3 @@ def contentbased():
             st.write(f"- Recall@all: {recall:.4f}")
             st.write(f"- F1 Score (precision@10, recall@all): {f1:.4f}")
             #i can't do precision@all, im doing for top 10, i can't do recall@10, false negative is 0?
-        except KeyError:
-            st.error("❌ Movie not found in database. Please try another.")
